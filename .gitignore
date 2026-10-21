@@ -1,0 +1,9 @@
+.venv/
+lib/
+sdk/build/
+videos/
+__pycache__/
+*.pyc
+MUJOCO_LOG.TXT
+# DEEP Robotics on-robot policies: unlicensed, not redistributed (see policies/README.md)
+policies/*.pt
