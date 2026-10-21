@@ -1,5 +1,11 @@
 # X30 sim: MotionSDK + on-robot policies in MuJoCo
 
+![X30 trotting in MuJoCo under DR's trot_policy_reflect](docs/x30_hero.png)
+
+<p align="center"><img src="docs/x30_strip.png" alt="Four frames through one trot stride at 1 m/s"></p>
+<p align="center"><sub>DEEP Robotics' on-robot <code>trot_policy_reflect</code> trotting at 1 m/s in MuJoCo, one stride.
+Regenerate with <code>.venv/bin/python docs/render_images.py</code>.</sub></p>
+
 Test the DEEP Robotics X30 MotionSDK and the policies copied off the robot against a simulated X30,
 before going near hardware. Everything needed is in this directory:
 

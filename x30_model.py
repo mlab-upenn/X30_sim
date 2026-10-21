@@ -33,6 +33,10 @@ def build_model(dt: float = 0.001, torque_limit: np.ndarray = TORQUE_LIMIT) -> m
     spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
     spec.visual.global_.offwidth, spec.visual.global_.offheight = 1920, 1080  # offscreen video
 
+    spec.add_texture(name="sky", type=mujoco.mjtTexture.mjTEXTURE_SKYBOX,
+                     builtin=mujoco.mjtBuiltin.mjBUILTIN_GRADIENT,
+                     rgb1=[0.55, 0.7, 0.85], rgb2=[0.1, 0.15, 0.2], width=512, height=3072)
+
     floor = spec.geom("floor")
     floor.pos = [0, 0, 0]
     floor.friction = [1.0, 0.01, 0.01]
