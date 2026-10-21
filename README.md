@@ -3,8 +3,7 @@
 ![X30 trotting in MuJoCo under DR's trot_policy_reflect](docs/x30_hero.png)
 
 <p align="center"><img src="docs/x30_strip.png" alt="Four frames through one trot stride at 1 m/s"></p>
-<p align="center"><sub>DEEP Robotics' on-robot <code>trot_policy_reflect</code> trotting at 1 m/s in MuJoCo, one stride.
-Regenerate with <code>.venv/bin/python docs/render_images.py</code>.</sub></p>
+<p align="center"><sub>DEEP Robotics' on-robot <code>trot_policy_reflect</code> trotting at 1 m/s in MuJoCo, one stride.</sub></p>
 
 Test the DEEP Robotics X30 MotionSDK and the policies copied off the robot against a simulated X30,
 before going near hardware. Everything needed is in this directory:
@@ -12,7 +11,7 @@ before going near hardware. Everything needed is in this directory:
 ```
 x30_sim/
 ├── third_party/x30_motion_sdk/   DR MotionSDK V2.0, unmodified, MIT (pybind11 submodule not vendored)
-├── policies/*.pt                 16 TorchScript policies copied off the robot (not in git; see policies/README.md)
+├── policies/*.pt                 DR's TorchScript policies, copied off the robot (not in git; see policies/README.md)
 ├── assets/X30_mjcf/              DR's X30 MJCF + meshes, unmodified, BSD-3 (from DeepRoboticsLab/deep_robotics_model)
 ├── x30_model.py  x30_policy.py  calibrate.py  sim_bridge.py  run_policy_sdk.py  run_sim.sh
 ├── sdk/CMakeLists.txt            out-of-tree SDK build → sdk/build/, lib/ (gitignored)
@@ -55,7 +54,7 @@ cmake --build sdk/build -j
 
 ```bash
 ./run_sim.sh                          # tmux: bridge + viewer | runner (keys: w/s a/d q/e, space, x)
-POLICY=slope_policy ./run_sim.sh
+POLICY=trot_policy_reflect ./run_sim.sh
 # or by hand, two terminals:
 .venv/bin/python sim_bridge.py [--headless]
 .venv/bin/python run_policy_sdk.py --cmd 1.0 0 0 --duration 10
@@ -75,21 +74,20 @@ Record a video (offscreen GPU rendering, no display needed) with a scripted comm
 .venv/bin/python run_policy_sdk.py --schedule "2:0,0,0 4:1,0,0 4:1,0,0.5 3:1.5,0,0 3:0.7,0,0 4:0,0,0.6 2:0,0,0"
 ```
 
-## What the policies are
+## Supported policies
 
-They're TorchScript exports from DR's rsl_rl fork (`actor_critic_decoder`, a DreamWaQ-style CENet
-estimator). Each takes 6 stacked frames (the current frame, then 5 history frames) and outputs 12
-joint actions. Joint order is FL, FR, HL, HR × HipX, HipY, Knee, the same as the SDK.
+Two of DR's on-robot policies are calibrated and run in the sim: `silent_policy` and
+`trot_policy_reflect`. Both are TorchScript exports from DR's rsl_rl fork (`actor_critic_decoder`,
+a DreamWaQ-style CENet estimator). Each takes 6 stacked frames (the current frame, then 5 history
+frames) and outputs 12 joint actions. Joint order is FL, FR, HL, HR × HipX, HipY, Knee, the same as
+the SDK.
 
-| Frame | Policies | Layout |
+| Policy | Frame | Layout |
 | --- | --- | --- |
-| 45 | silent, slope, low_energy, recover, stand_recover, follow, backup | ang_vel 3, proj_gravity 3, cmd 3, dof_pos−default 12, dof_vel 12, last_action 12 |
-| 52 | trot/run_policy_reflect, trot_slope_nav, H_v3.3/3.4 | ang_vel, gravity, cmd, sin_phase, cos_phase, gait_cmd 5, dof_pos, dof_vel, last_action (names from the export's `reflect_proprioception`) |
-| 48 | poscmd | 45 + 3, unknown |
-| 45/52 + 64 | policy_x30_H_v3.x | also need `latent_lidar` (64) from a lidar encoder that isn't in these files |
+| `silent_policy` | 45 | ang_vel 3, proj_gravity 3, cmd 3, dof_pos−default 12, dof_vel 12, last_action 12 |
+| `trot_policy_reflect` | 52 | ang_vel, gravity, cmd, sin_phase, cos_phase, gait_cmd 5, dof_pos, dof_vel, last_action (names from the export's `reflect_proprioception`) |
 
-`trot_velest.pt` is only the estimator, which outputs body velocity. The `*_reflect` policies take an
-extra `reflect` flag that mirrors left and right.
+`trot_policy_reflect` also takes a `reflect` flag that mirrors left and right; the sim passes 0.
 
 ### Calibrated settings (silent_policy, `calibrate.py`)
 
@@ -144,8 +142,5 @@ Measured in sim:
 
 ## Not done yet
 
-- **Other 52-dim policies** (`run_policy_reflect`, `trot_slope_nav`): not calibrated yet. They
-  probably share the trot preset.
-- **H_v3.x policies:** need DR's lidar encoder.
 - **SDK on current firmware:** the API docs for current firmware don't mention this SDK, so it
   hasn't been checked on the robot.
