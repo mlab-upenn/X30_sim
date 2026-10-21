@@ -58,8 +58,15 @@ PRESETS = {
 }
 
 
+def policy_path(name: str) -> Path:
+    path = POLICY_DIR / f"{name}.pt"
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} not found; the policies aren't in git, see policies/README.md")
+    return path
+
+
 def frame_dim_of(name: str) -> int:
-    net = torch.jit.load(str(POLICY_DIR / f"{name}.pt"), map_location="cpu")
+    net = torch.jit.load(str(policy_path(name)), map_location="cpu")
     return dict(net.named_parameters())["cenet_encoder.0.weight"].shape[1] // (NUM_FRAMES - 1)
 
 
@@ -78,7 +85,7 @@ class X30Policy:
 
     def __init__(self, cfg: PolicyConfig):
         self.cfg = cfg
-        self.net = torch.jit.load(str(POLICY_DIR / f"{cfg.name}.pt"), map_location="cpu").eval()
+        self.net = torch.jit.load(str(policy_path(cfg.name)), map_location="cpu").eval()
         if not hasattr(self.net, "actor_body"):
             raise NotImplementedError(f"{cfg.name} has no actor (velocity estimator only); it can't drive the robot")
         in_dim = dict(self.net.named_parameters())["cenet_encoder.0.weight"].shape[1]
