@@ -14,6 +14,7 @@ x30_sim/
 ├── policies/*.pt                 DR's TorchScript policies, copied off the robot (not in git; see policies/README.md)
 ├── assets/X30_mjcf/              DR's X30 MJCF + meshes, unmodified, BSD-3 (from DeepRoboticsLab/deep_robotics_model)
 ├── x30_model.py  x30_policy.py  calibrate.py  sim_bridge.py  run_policy_sdk.py  run_sim.sh
+├── docs/                         README images (docs/render_images.py)
 ├── sdk/CMakeLists.txt            out-of-tree SDK build → sdk/build/, lib/ (gitignored)
 ├── .venv/                        uv venv (gitignored)
 └── videos/                       recordings (gitignored)
@@ -21,7 +22,7 @@ x30_sim/
 
 ```
 run_policy_sdk.py ──(SDK pybind, UDP)──► sim_bridge.py ──► MuJoCo X30
-  policy @100 Hz        0x0111 joint cmds :43893        tau = kp(q*-q) + kd(dq*-dq) + tau_ff
+  policy @50/100 Hz     0x0111 joint cmds :43893        tau = kp(q*-q) + kd(dq*-dq) + tau_ff
   cmd stream @1 kHz  ◄── 0x0906 RobotDataSDK :43897 ──  1 kHz, real time
 ```
 
@@ -42,10 +43,11 @@ run_policy_sdk.py ──(SDK pybind, UDP)──► sim_bridge.py ──► MuJoC
 ```bash
 cd x30_sim
 uv venv -p 3.11 .venv
-uv pip install -p .venv/bin/python mujoco==3.15.0 numpy==1.26.4 glfw pybind11 imageio imageio-ffmpeg
-uv pip install -p .venv/bin/python torch --index-url https://download.pytorch.org/whl/cpu
-cmake -S sdk -B sdk/build -Dpybind11_DIR=$(.venv/bin/python -m pybind11 --cmakedir) \
-      -DPython_EXECUTABLE=$PWD/.venv/bin/python
+source .venv/bin/activate
+uv pip install mujoco==3.15.0 numpy==1.26.4 glfw pybind11 imageio imageio-ffmpeg pynput
+uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+cmake -S sdk -B sdk/build -Dpybind11_DIR=$(python -m pybind11 --cmakedir) \
+      -DPython_EXECUTABLE=$(which python)
 cmake --build sdk/build -j
 ./sdk/build/print_sizes   # EthCommand=12 RobotCmdSDK=240 RobotDataSDK=284
 ```
@@ -53,14 +55,53 @@ cmake --build sdk/build -j
 ## Run
 
 ```bash
-./run_sim.sh                          # tmux: bridge + viewer | runner (keys: w/s a/d q/e, space, x)
-POLICY=trot_policy_reflect ./run_sim.sh
-# or by hand, two terminals:
-.venv/bin/python sim_bridge.py [--headless]
-.venv/bin/python run_policy_sdk.py --cmd 1.0 0 0 --duration 10
+./run_sim.sh                          # tmux: bridge + viewer | runner, trot_policy_reflect
+POLICY=silent_policy ./run_sim.sh     # the other supported policy
+HEADLESS=1 ./run_sim.sh               # no viewer
+SIM_DISPLAY=:1 ./run_sim.sh           # force an X display
 ```
 
-The runner refuses a non-loopback `--ip` unless `--real` is given.
+`run_sim.sh` activates `.venv` itself and opens a tmux session `x30_sim`: bridge on the left,
+runner on the right. `Ctrl-b` + arrow switches panes, `Ctrl-b d` detaches, and
+`tmux kill-session -t x30_sim` stops everything. Re-running `run_sim.sh` replaces the old session.
+
+To run by hand, activate the venv in each of two terminals:
+
+```bash
+source .venv/bin/activate
+python sim_bridge.py [--headless]                          # terminal 1
+python run_policy_sdk.py --cmd 1.0 0 0 --duration 10       # terminal 2
+```
+
+Keys in the runner terminal (hold to move, release to stop, combine freely, e.g. `w` + `q`):
+
+| Key | Command |
+| --- | --- |
+| `w` / `s` | forward / back (0.8 m/s) |
+| `a` / `d` | left / right (0.4 m/s) |
+| `q` / `e` | turn left / right (0.8 rad/s) |
+| space | zero all commands |
+| `x` | release control (damping) and exit |
+
+Keys are read as X press/release events with `pynput`, the same scheme as IsaacLab's
+`Se2Keyboard`: the command is the sum of the held keys. `pynput` hears every window, so keys only
+count while the terminal you launched from has focus. `run_sim.sh` notes that window before the
+viewer opens. Run by hand, the runner uses whichever window is focused when it starts. Without an
+X display (e.g. over ssh) the keyboard is off; use `--cmd` or `--schedule`.
+
+`run_policy_sdk.py` options:
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `--policy NAME` | `trot_policy_reflect` | policy file in `policies/` |
+| `--cmd VX VY WZ` | `0 0 0` | command once the policy takes over, until a key changes it |
+| `--key-speed VX VY WZ` | `0.8 0.4 0.8` | command while a key is held |
+| `--any-window` | off | take keys whichever window has focus |
+| `--key-window ID` | focused at start | X window that takes keys (`run_sim.sh` sets it) |
+| `--duration SECS` | none | exit after this long under the policy |
+| `--schedule "secs:vx,vy,wz ..."` | none | timed commands, overriding the keys; exits when it ends |
+| `--ip`, `--port`, `--recv-port` | `127.0.0.1`, 43893, 43897 | motion host and state port |
+| `--real` | off | allow a non-loopback `--ip` (a real robot) |
 
 **Don't run DR's own examples against the sim.** `example/main.cpp` uses `SendToRobot()`, which
 defaults to `192.168.1.103`, and `python/motion_sdk_example.py` hard-codes the same address. Both
@@ -70,14 +111,15 @@ example with `-DBUILD_DR_EXAMPLE=ON`.
 Record a video (offscreen GPU rendering, no display needed) with a scripted command schedule:
 
 ```bash
-.venv/bin/python sim_bridge.py --headless --record videos/demo.mp4 --duration 37 &
-.venv/bin/python run_policy_sdk.py --schedule "2:0,0,0 4:1,0,0 4:1,0,0.5 3:1.5,0,0 3:0.7,0,0 4:0,0,0.6 2:0,0,0"
+source .venv/bin/activate
+python sim_bridge.py --headless --record videos/demo.mp4 --duration 37 &
+python run_policy_sdk.py --schedule "2:0,0,0 4:1,0,0 4:1,0,0.5 3:1.5,0,0 3:0.7,0,0 4:0,0,0.6 2:0,0,0"
 ```
 
 ## Supported policies
 
-Two of DR's on-robot policies are calibrated and run in the sim: `silent_policy` and
-`trot_policy_reflect`. Both are TorchScript exports from DR's rsl_rl fork (`actor_critic_decoder`,
+Two of DR's on-robot policies are calibrated and run in the sim: `trot_policy_reflect` (the
+default) and `silent_policy`. Both are TorchScript exports from DR's rsl_rl fork (`actor_critic_decoder`,
 a DreamWaQ-style CENet estimator). Each takes 6 stacked frames (the current frame, then 5 history
 frames) and outputs 12 joint actions. Joint order is FL, FR, HL, HR × HipX, HipY, Knee, the same as
 the SDK.
@@ -137,8 +179,6 @@ Measured in sim:
 - **Turning:** 0.8 → 0.62 rad/s.
 - **Standing:** creeps forward at about 0.08 m/s.
 - **Spin after a run:** survives turning in place right after a 1.5 m/s run, which flips `silent_policy`.
-
-`POLICY=trot_policy_reflect ./run_sim.sh`
 
 ## Not done yet
 
